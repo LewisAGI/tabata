@@ -1,6 +1,9 @@
 import '../engine/clock.dart';
 
 abstract class CueSink {
+  /// Fired when an audio interruption ends and the silent loop should resume.
+  void Function()? onInterruptionEnd;
+
   Future<void> begin();
   Future<void> end();
   Future<void> beep();
@@ -8,6 +11,9 @@ abstract class CueSink {
 }
 
 class SilentCues implements CueSink {
+  @override
+  void Function()? onInterruptionEnd;
+
   int beeps = 0;
   final List<String> spoken = [];
   bool bed = false;

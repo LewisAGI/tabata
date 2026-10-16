@@ -47,6 +47,12 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
       IntervalPlan.fromPreset(widget.preset),
       time: widget.time,
     );
+    _cues.onInterruptionEnd = () {
+      if (_done || !mounted) {
+        return;
+      }
+      _onTick();
+    };
     _clock.start();
     _sample = _clock.sample();
     _enqueue(_sample!.cues);
@@ -59,6 +65,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _ticker?.cancel();
+    _cues.onInterruptionEnd = null;
     unawaited(_cues.end());
     unawaited(_wake.set(running: false, foreground: false));
     super.dispose();
@@ -68,7 +75,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final foreground = state == AppLifecycleState.resumed;
     if (foreground && !_done) {
-      _clock.onAppResumed();
+      _clock.catchUp();
       if (_clock.status == RunStatus.running) {
         unawaited(_cues.begin());
       }
@@ -92,6 +99,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
     if (_done || !mounted) {
       return;
     }
+    _clock.catchUp();
     final next = _clock.sample();
     setState(() => _sample = next);
     if (next.status == RunStatus.finished) {
