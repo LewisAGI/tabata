@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -19,13 +19,7 @@ const _shots = bool.fromEnvironment('SCREENSHOTS');
 void main() {
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
-    final loader = FontLoader('Roboto')
-      ..addFont(rootBundle.load('assets/fonts/Roboto-Regular.ttf'))
-      ..addFont(rootBundle.load('assets/fonts/Roboto-Medium.ttf'))
-      ..addFont(rootBundle.load('assets/fonts/Roboto-Bold.ttf'))
-      ..addFont(rootBundle.load('assets/fonts/Roboto-Black.ttf'));
-    await loader.load();
-    await _loadMaterialIcons();
+    await _loadScreenshotFonts();
   });
 
   void phone(WidgetTester tester) {
@@ -156,41 +150,26 @@ void main() {
   });
 }
 
-Future<void> _loadMaterialIcons() async {
-  ByteData data;
-  try {
-    data = await rootBundle.load('fonts/MaterialIcons-Regular.otf');
-  } on Object {
-    final file = File(
-      '$_flutterRoot/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
-    );
-    data = ByteData.sublistView(await file.readAsBytes());
-  }
-  final loader = FontLoader('MaterialIcons')
-    ..addFont(Future<ByteData>.value(data));
-  await loader.load();
-}
-
-String get _flutterRoot {
-  final fromEnv = Platform.environment['FLUTTER_ROOT'];
-  if (fromEnv != null && fromEnv.isNotEmpty) {
-    return fromEnv;
-  }
-  var dir = File(Platform.resolvedExecutable).parent;
-  for (var i = 0; i < 8; i++) {
-    final marker = File(
-      '${dir.path}/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
-    );
-    if (marker.existsSync()) {
-      return dir.path;
+Future<void> _loadScreenshotFonts() async {
+  final manifest =
+      jsonDecode(await rootBundle.loadString('FontManifest.json')) as List;
+  const wanted = {'Roboto', 'MaterialIcons'};
+  final loaded = <String>{};
+  for (final entry in manifest) {
+    final family = entry['family'] as String;
+    if (!wanted.contains(family)) {
+      continue;
     }
-    final parent = dir.parent;
-    if (parent.path == dir.path) {
-      break;
+    final loader = FontLoader(family);
+    for (final face in entry['fonts'] as List) {
+      loader.addFont(rootBundle.load(face['asset'] as String));
     }
-    dir = parent;
+    await loader.load();
+    loaded.add(family);
   }
-  return '${Platform.environment['HOME']}/sdk/flutter';
+  if (!loaded.containsAll(wanted)) {
+    throw StateError('Screenshot fonts missing: ${wanted.difference(loaded)}');
+  }
 }
 
 void _noop() {}

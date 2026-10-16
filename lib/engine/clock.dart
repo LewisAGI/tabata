@@ -51,10 +51,11 @@ class ClockSample {
   bool get finished => status == RunStatus.finished;
 }
 
-/// Monotonic elapsed time.
+/// Monotonic elapsed time for foreground ticks.
 ///
-/// [StopwatchTime] keeps advancing while the app is backgrounded, and it does
-/// not move when the wall clock is changed.
+/// [StopwatchTime] does not move when the wall clock is changed. On iOS it
+/// also pauses while the device sleeps; [IntervalClock.onAppResumed] fills
+/// that gap from wall time.
 abstract class MonotonicTime {
   void start();
   void stop();
@@ -111,18 +112,30 @@ class ManualTime implements MonotonicTime {
   bool get isRunning => _running;
 }
 
-/// Countdown driven by a monotonic stopwatch.
+/// Countdown driven by a monotonic stopwatch, with a wall-clock catch-up.
 ///
-/// Elapsed time is read from the stopwatch, so a locked screen still moves
-/// the phase forward and a wall-clock change does not. Pause stops the
-/// stopwatch. Resume continues it.
+/// Foreground ticks come from the stopwatch, so changing the phone's clock
+/// does not move the phase. On iOS that stopwatch is `CLOCK_MONOTONIC_RAW`,
+/// which pauses while the device sleeps. If the silent audio loop stops, the
+/// app suspends and the stopwatch falls behind. [onAppResumed] compares wall
+/// time since the last [start] or [resume] and, when wall time is more than
+/// a second ahead, adds that gap.
 class IntervalClock {
-  IntervalClock(this.plan, {MonotonicTime? time})
-    : time = time ?? StopwatchTime();
+  IntervalClock(this.plan, {MonotonicTime? time, DateTime Function()? now})
+    : time = time ?? StopwatchTime(),
+      _now = now ?? DateTime.now;
 
   final IntervalPlan plan;
   final MonotonicTime time;
+  final DateTime Function() _now;
+
+  /// Wall time is ignored until it leads the stopwatch by more than this.
+  static const catchUpThreshold = Duration(seconds: 1);
+
   bool _started = false;
+  DateTime? _wallAnchor;
+  Duration _monoAtAnchor = Duration.zero;
+  Duration _slept = Duration.zero;
   int _announced = -1;
   int? _markedSecond;
   bool _finishedCue = false;
@@ -145,9 +158,11 @@ class IntervalClock {
       ..reset()
       ..start();
     _started = true;
+    _slept = Duration.zero;
     _announced = -1;
     _markedSecond = null;
     _finishedCue = false;
+    _markAnchor();
   }
 
   void pause() {
@@ -155,6 +170,7 @@ class IntervalClock {
       return;
     }
     time.stop();
+    _wallAnchor = null;
   }
 
   void resume() {
@@ -162,13 +178,41 @@ class IntervalClock {
       return;
     }
     time.start();
+    _markAnchor();
+  }
+
+  /// Call when the app returns to the foreground.
+  ///
+  /// Adds the time the stopwatch missed while the device was asleep.
+  void onAppResumed() {
+    if (status != RunStatus.running) {
+      return;
+    }
+    final anchor = _wallAnchor;
+    if (anchor == null) {
+      return;
+    }
+    var monoDelta = time.elapsed - _monoAtAnchor;
+    if (monoDelta.isNegative) {
+      monoDelta = Duration.zero;
+    }
+    final gap = _now().difference(anchor) - monoDelta;
+    if (gap > catchUpThreshold) {
+      _slept += gap;
+    }
+    _markAnchor();
+  }
+
+  void _markAnchor() {
+    _wallAnchor = _now();
+    _monoAtAnchor = time.elapsed;
   }
 
   Duration get elapsed {
     if (!_started) {
       return Duration.zero;
     }
-    var raw = time.elapsed;
+    var raw = time.elapsed + _slept;
     if (raw.isNegative) {
       raw = Duration.zero;
     }

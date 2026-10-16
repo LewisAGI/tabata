@@ -15,6 +15,7 @@ class DeviceCues implements CueSink {
   final FlutterTts _tts = FlutterTts();
   var _ready = false;
   var _bedOn = false;
+  var _listening = false;
 
   Future<void> _ensure() async {
     if (_ready) {
@@ -49,20 +50,44 @@ class DeviceCues implements CueSink {
     await _bed.setAsset('assets/audio/bed.wav');
     await _bed.setVolume(0.35);
     await _bed.setLoopMode(LoopMode.one);
+    if (!_listening) {
+      _listening = true;
+      session.interruptionEventStream.listen(_onInterruption);
+    }
     _ready = true;
+  }
+
+  /// A phone call, Siri, or an alarm stops the silent loop. When that
+  /// interruption ends, start it again so iOS does not suspend the timer.
+  void _onInterruption(AudioInterruptionEvent event) {
+    if (event.begin || !_bedOn) {
+      return;
+    }
+    unawaited(_resumeBed());
+  }
+
+  Future<void> _resumeBed() async {
+    try {
+      final session = await AudioSession.instance;
+      await session.setActive(true);
+      unawaited(_bed.play());
+    } on Object {
+      // The next foreground resume calls [begin] again.
+    }
   }
 
   @override
   Future<void> begin() async {
     try {
       await _ensure();
-      if (_bedOn) {
+      _bedOn = true;
+      if (_bed.playing) {
         return;
       }
-      _bedOn = true;
       unawaited(_bed.play());
     } on Object {
       _ready = false;
+      _bedOn = false;
     }
   }
 

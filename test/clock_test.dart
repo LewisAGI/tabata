@@ -195,4 +195,88 @@ void main() {
       throwsStateError,
     );
   });
+
+  test('a frozen stopwatch catches up 60s of wall time on resume', () {
+    // 25/15: at 60s the phase is round 2 work, 5s remaining.
+    const slept = Preset(
+      id: 'slept',
+      name: 'Slept',
+      prep: 0,
+      work: 25,
+      rest: 15,
+      rounds: 4,
+      sets: 1,
+      setRest: 0,
+      cooldown: 0,
+    );
+    final time = ManualTime();
+    var now = DateTime(2026, 10, 16, 8);
+    final clock = IntervalClock(
+      IntervalPlan.fromPreset(slept),
+      time: time,
+      now: () => now,
+    );
+    clock.start();
+    final opened = clock.sample();
+    expect(opened.phaseIndex, 0);
+    expect(opened.phase!.round, 1);
+    expect(opened.elapsed, Duration.zero);
+
+    now = now.add(const Duration(seconds: 60));
+    expect(clock.elapsed, Duration.zero);
+
+    clock.onAppResumed();
+    final landed = clock.sample();
+    expect(landed.elapsed, const Duration(seconds: 60));
+    expect(landed.phaseIndex, 2);
+    expect(landed.phase!.kind, PhaseKind.work);
+    expect(landed.phase!.round, 2);
+    expect(landed.remaining, const Duration(seconds: 5));
+
+    clock.onAppResumed();
+    expect(clock.elapsed, const Duration(seconds: 60));
+  });
+
+  test('a one second wall lead and a pause do not move the stopwatch', () {
+    const slept = Preset(
+      id: 'slept',
+      name: 'Slept',
+      prep: 0,
+      work: 25,
+      rest: 15,
+      rounds: 4,
+      sets: 1,
+      setRest: 0,
+      cooldown: 0,
+    );
+    final time = ManualTime();
+    var now = DateTime(2026, 10, 16, 8);
+    final clock = IntervalClock(
+      IntervalPlan.fromPreset(slept),
+      time: time,
+      now: () => now,
+    );
+    clock.start();
+
+    now = now.add(IntervalClock.catchUpThreshold);
+    clock.onAppResumed();
+    expect(clock.elapsed, Duration.zero);
+    expect(clock.sample().phaseIndex, 0);
+
+    time.advance(const Duration(seconds: 10));
+    now = now.add(const Duration(seconds: 10));
+    clock.pause();
+    now = now.add(const Duration(seconds: 60));
+    clock.onAppResumed();
+    expect(clock.status, RunStatus.paused);
+    expect(clock.elapsed, const Duration(seconds: 10));
+
+    clock.resume();
+    now = now.add(const Duration(seconds: 60));
+    clock.onAppResumed();
+    expect(clock.elapsed, const Duration(seconds: 70));
+    final landed = clock.sample();
+    expect(landed.phase!.kind, PhaseKind.rest);
+    expect(landed.phase!.round, 2);
+  });
 }

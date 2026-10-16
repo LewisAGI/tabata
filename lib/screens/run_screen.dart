@@ -67,6 +67,12 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final foreground = state == AppLifecycleState.resumed;
+    if (foreground && !_done) {
+      _clock.onAppResumed();
+      if (_clock.status == RunStatus.running) {
+        unawaited(_cues.begin());
+      }
+    }
     final running = _clock.status == RunStatus.running;
     unawaited(_wake.set(running: running, foreground: foreground));
     if (foreground && !_done) {
