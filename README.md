@@ -19,11 +19,19 @@ flutter run --release
 
 `flutter run --release` builds and installs Tabata on the plugged-in iPhone. The bundle id is `com.lewisagi.tabata`.
 
-### Signing team
+### Install with Xcode and a Personal Team
 
-If the build stops on a signing error, open `ios/Runner.xcworkspace` in Xcode, select the Runner target, and set Signing & Capabilities → Team to your Apple ID. Then run `flutter run --release` again.
+1. Open `ios/Runner.xcworkspace` in Xcode.
+2. In the project navigator, select the **Runner** project, then the **Runner** target.
+3. Open **Signing & Capabilities**.
+4. Turn on **Automatically manage signing**.
+5. Set **Team** to your Personal Team, the free Apple ID you use for development.
+6. Leave the bundle id as `com.lewisagi.tabata`.
+7. Plug in the iPhone, choose it as the run destination, and press Run.
 
-A free Apple ID can install the app on your own phone. That install lasts about seven days, then you run the same command again.
+After the team is set, `flutter run --release` from the project folder installs the same build.
+
+A free Apple ID can install the app on your own phone. That install lasts about seven days, then you run it again.
 
 ## What you get
 
@@ -31,7 +39,7 @@ Saved presets: name, prep, work, rest, rounds, sets, rest between sets, and cool
 
 The running screen is a large countdown. The background tints for work and rest. A beep sounds on each phase change and on the last three seconds. Voice cues say "round 3 of 8" and "work", or "rest".
 
-The countdown stores a wall-clock end time, so locking the phone does not drift it. iOS `UIBackgroundModes` includes `audio`, and the audio session is playback mixed with whatever else is playing. A quiet loop keeps the process awake so the beeps and the voice still fire with the screen locked. `wakelock_plus` holds the screen on only while the timer is running in the foreground.
+The countdown reads a monotonic stopwatch, so locking the phone does not drift it and changing the phone's clock does not jump it. iOS `UIBackgroundModes` includes `audio`, and the audio session is playback mixed with whatever else is playing. A silent loop keeps the process awake so the beeps and the voice still fire with the screen locked. `wakelock_plus` holds the screen on only while the timer is running in the foreground.
 
 Finished and stopped sessions are logged on the phone. Copy, Grok, and Share hand over one plain-text block for a session, a day, or a week: heading, date, preset, work, rest, rounds, sets, total time, and completed or stopped early. Paste that block into any AI. Share uses the system sheet, and on iPad the popover is anchored to the button.
 

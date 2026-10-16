@@ -51,66 +51,124 @@ class ClockSample {
   bool get finished => status == RunStatus.finished;
 }
 
-/// Countdown driven by wall-clock timestamps.
+/// Monotonic elapsed time.
 ///
-/// Pause stores the remaining slice. A jump in [DateTime] (the app was
-/// suspended) lands on the phase that contains that instant.
+/// [StopwatchTime] keeps advancing while the app is backgrounded, and it does
+/// not move when the wall clock is changed.
+abstract class MonotonicTime {
+  void start();
+  void stop();
+  void reset();
+  Duration get elapsed;
+  bool get isRunning;
+}
+
+class StopwatchTime implements MonotonicTime {
+  StopwatchTime([Stopwatch? watch]) : _watch = watch ?? Stopwatch();
+
+  final Stopwatch _watch;
+
+  @override
+  void start() => _watch.start();
+
+  @override
+  void stop() => _watch.stop();
+
+  @override
+  void reset() => _watch.reset();
+
+  @override
+  Duration get elapsed => _watch.elapsed;
+
+  @override
+  bool get isRunning => _watch.isRunning;
+}
+
+/// A clock tests can move without waiting.
+class ManualTime implements MonotonicTime {
+  Duration _elapsed = Duration.zero;
+  bool _running = false;
+
+  void advance(Duration by) {
+    if (_running) {
+      _elapsed += by;
+    }
+  }
+
+  @override
+  void start() => _running = true;
+
+  @override
+  void stop() => _running = false;
+
+  @override
+  void reset() => _elapsed = Duration.zero;
+
+  @override
+  Duration get elapsed => _elapsed;
+
+  @override
+  bool get isRunning => _running;
+}
+
+/// Countdown driven by a monotonic stopwatch.
+///
+/// Elapsed time is read from the stopwatch, so a locked screen still moves
+/// the phase forward and a wall-clock change does not. Pause stops the
+/// stopwatch. Resume continues it.
 class IntervalClock {
-  IntervalClock(this.plan);
+  IntervalClock(this.plan, {MonotonicTime? time})
+    : time = time ?? StopwatchTime();
 
   final IntervalPlan plan;
-  DateTime? startedAt;
-  Duration pausedAccumulated = Duration.zero;
-  DateTime? pausedAt;
+  final MonotonicTime time;
+  bool _started = false;
   int _announced = -1;
   int? _markedSecond;
   bool _finishedCue = false;
 
-  RunStatus statusAt(DateTime now) {
-    if (startedAt == null) {
+  RunStatus get status {
+    if (!_started) {
       return RunStatus.ready;
     }
-    if (pausedAt != null) {
-      return RunStatus.paused;
-    }
-    if (plan.total == Duration.zero || elapsed(now) >= plan.total) {
+    if (plan.total == Duration.zero || elapsed >= plan.total) {
       return RunStatus.finished;
+    }
+    if (!time.isRunning) {
+      return RunStatus.paused;
     }
     return RunStatus.running;
   }
 
-  void start(DateTime now) {
-    startedAt = now;
-    pausedAccumulated = Duration.zero;
-    pausedAt = null;
+  void start() {
+    time
+      ..reset()
+      ..start();
+    _started = true;
     _announced = -1;
     _markedSecond = null;
     _finishedCue = false;
   }
 
-  void pause(DateTime now) {
-    if (statusAt(now) != RunStatus.running) {
+  void pause() {
+    if (status != RunStatus.running) {
       return;
     }
-    pausedAt = now;
+    time.stop();
   }
 
-  void resume(DateTime now) {
-    final paused = pausedAt;
-    if (paused == null) {
+  void resume() {
+    if (status != RunStatus.paused) {
       return;
     }
-    pausedAccumulated += now.difference(paused);
-    pausedAt = null;
+    time.start();
   }
 
-  Duration elapsed(DateTime now) {
-    final start = startedAt;
-    if (start == null) {
+  Duration get elapsed {
+    if (!_started) {
       return Duration.zero;
     }
-    final end = pausedAt ?? now;
-    var raw = end.difference(start) - pausedAccumulated;
+    var raw = time.elapsed;
     if (raw.isNegative) {
       raw = Duration.zero;
     }
@@ -120,11 +178,11 @@ class IntervalClock {
     return raw;
   }
 
-  ClockSample sample(DateTime now) {
-    final status = statusAt(now);
-    final elapsed = this.elapsed(now);
+  ClockSample sample() {
+    final status = this.status;
+    final elapsed = this.elapsed;
     if (plan.phases.isEmpty) {
-      return ClockSample(
+      return const ClockSample(
         status: RunStatus.finished,
         phase: null,
         phaseIndex: 0,
@@ -132,7 +190,7 @@ class IntervalClock {
         elapsed: Duration.zero,
         progress: 1,
         displaySeconds: 0,
-        cues: const [],
+        cues: [],
       );
     }
     final location = locate(plan, elapsed);

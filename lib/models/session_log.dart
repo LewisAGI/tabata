@@ -80,9 +80,9 @@ class SessionLog {
   factory SessionLog.fromJson(Map<String, dynamic> json) {
     int asInt(Object? value) => value is num ? value.toInt() : 0;
     return SessionLog(
-      id: json['id'] as String? ?? '',
-      presetId: json['presetId'] as String? ?? '',
-      presetName: json['presetName'] as String? ?? 'Tabata',
+      id: _string(json['id']),
+      presetId: _string(json['presetId']),
+      presetName: _string(json['presetName'], fallback: 'Tabata'),
       prep: asInt(json['prep']),
       work: asInt(json['work']),
       rest: asInt(json['rest']),
@@ -90,10 +90,27 @@ class SessionLog {
       sets: asInt(json['sets']),
       setRest: asInt(json['setRest']),
       cooldown: asInt(json['cooldown']),
-      startedAt: DateTime.parse(json['startedAt'] as String),
-      endedAt: DateTime.parse(json['endedAt'] as String),
+      startedAt: _time(json['startedAt']),
+      endedAt: _time(json['endedAt']),
       totalSeconds: asInt(json['totalSeconds']),
       completed: json['completed'] == true,
     );
   }
+}
+
+String _string(Object? value, {String fallback = ''}) {
+  if (value == null) {
+    return fallback;
+  }
+  if (value is String) {
+    return value;
+  }
+  throw const FormatException('expected a string');
+}
+
+DateTime _time(Object? value) {
+  if (value is! String) {
+    throw const FormatException('expected a date');
+  }
+  return DateTime.parse(value);
 }

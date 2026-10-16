@@ -6,8 +6,9 @@ import 'package:just_audio/just_audio.dart';
 
 import 'cues.dart';
 
-/// Beeps, spoken cues, and a quiet loop that keeps iOS from suspending the
-/// timer. The session is playback mixed with other audio.
+/// Beeps, spoken cues, and a silent loop that keeps iOS from suspending the
+/// timer. The loop is digital silence so it does not hiss over other audio.
+/// The session is playback mixed with whatever else is playing.
 class DeviceCues implements CueSink {
   final AudioPlayer _beep = AudioPlayer();
   final AudioPlayer _bed = AudioPlayer();

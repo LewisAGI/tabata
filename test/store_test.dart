@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabata/data/store.dart';
 import 'package:tabata/models/preset.dart';
@@ -91,5 +93,40 @@ void main() {
   test('broken json reads as an empty list', () {
     final box = MemoryBox()..data[TabataStore.presetsKey] = '{';
     expect(TabataStore(box).presets(), isEmpty);
+  });
+
+  test('bad preset and session entries are skipped', () {
+    final started = DateTime(2026, 10, 16, 8, 41);
+    final session = SessionLog.capture(
+      preset: Preset.classic,
+      startedAt: started,
+      endedAt: started.add(const Duration(minutes: 4)),
+      elapsed: const Duration(minutes: 4),
+      completed: true,
+    );
+    final box = MemoryBox()
+      ..data[TabataStore.presetsKey] = jsonEncode([
+        {'id': 7, 'name': 'Broken'},
+        Preset.classic.toJson(),
+        {'id': 'x', 'name': 3},
+        'nope',
+      ])
+      ..data[TabataStore.sessionsKey] = jsonEncode([
+        {...session.toJson(), 'startedAt': 12},
+        session.toJson(),
+        {
+          'id': 'bad',
+          'presetId': 'p',
+          'presetName': 'P',
+          'startedAt': 'nope',
+          'endedAt': 'also-nope',
+        },
+        {'id': 1, 'startedAt': started.toIso8601String()},
+      ]);
+    final store = TabataStore(box);
+    expect(store.presets().map((preset) => preset.name), ['Classic']);
+    expect(store.sessions(), hasLength(1));
+    expect(store.sessions().single.presetName, 'Classic');
+    expect(store.sessions().single.totalSeconds, 240);
   });
 }

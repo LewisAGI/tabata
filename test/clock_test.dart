@@ -16,80 +16,183 @@ void main() {
     cooldown: 0,
   );
 
-  final t0 = DateTime(2026, 10, 16, 8);
-
   IntervalPlan plan() => IntervalPlan.fromPreset(preset);
 
-  test('pause freezes the clock and resume follows wall time', () {
-    final clock = IntervalClock(plan());
-    clock.start(t0);
+  test('pause freezes the clock and resume follows monotonic time', () {
+    final time = ManualTime();
+    final clock = IntervalClock(plan(), time: time);
+    clock.start();
 
-    final opened = clock.sample(t0);
+    final opened = clock.sample();
     expect(opened.displaySeconds, 20);
     expect(opened.cues.map((cue) => cue.text), [null, 'round 1 of 2', 'work']);
 
-    final atThree = clock.sample(t0.add(const Duration(seconds: 17)));
+    time.advance(const Duration(seconds: 17));
+    final atThree = clock.sample();
     expect(atThree.displaySeconds, 3);
     expect(atThree.remaining, const Duration(seconds: 3));
     expect(atThree.cues, hasLength(1));
     expect(atThree.cues.single.kind, CueKind.beep);
 
-    final stillThree = clock.sample(
-      t0.add(const Duration(milliseconds: 17500)),
-    );
+    time.advance(const Duration(milliseconds: 500));
+    final stillThree = clock.sample();
     expect(stillThree.displaySeconds, 3);
     expect(stillThree.cues, isEmpty);
 
-    final atTwo = clock.sample(t0.add(const Duration(seconds: 18)));
+    time.advance(const Duration(milliseconds: 500));
+    final atTwo = clock.sample();
     expect(atTwo.displaySeconds, 2);
     expect(atTwo.cues.single.kind, CueKind.beep);
 
-    clock.pause(t0.add(const Duration(seconds: 18)));
-    final held = clock.sample(t0.add(const Duration(seconds: 100)));
+    clock.pause();
+    time.advance(const Duration(seconds: 82));
+    final held = clock.sample();
     expect(held.status, RunStatus.paused);
     expect(held.elapsed, const Duration(seconds: 18));
     expect(held.displaySeconds, 2);
     expect(held.phaseIndex, 0);
     expect(held.cues, isEmpty);
 
-    clock.resume(t0.add(const Duration(seconds: 100)));
-    final after = clock.sample(t0.add(const Duration(seconds: 101)));
+    clock.resume();
+    time.advance(const Duration(seconds: 1));
+    final after = clock.sample();
     expect(after.status, RunStatus.running);
     expect(after.elapsed, const Duration(seconds: 19));
     expect(after.displaySeconds, 1);
     expect(after.cues.single.kind, CueKind.beep);
   });
 
-  test('a background jump lands on the phase for that wall clock', () {
-    final clock = IntervalClock(plan());
-    clock.start(t0);
+  test('a background gap lands on the phase for that elapsed time', () {
+    final time = ManualTime();
+    final clock = IntervalClock(plan(), time: time);
+    clock.start();
 
-    final landed = clock.sample(t0.add(const Duration(seconds: 25)));
+    time.advance(const Duration(seconds: 25));
+    final landed = clock.sample();
     expect(landed.status, RunStatus.running);
     expect(landed.phaseIndex, 1);
     expect(landed.phase!.kind, PhaseKind.rest);
     expect(landed.remaining, const Duration(seconds: 5));
     expect(landed.cues.map((cue) => cue.text), [null, 'rest']);
 
-    final next = clock.sample(t0.add(const Duration(seconds: 32)));
+    time.advance(const Duration(seconds: 7));
+    final next = clock.sample();
     expect(next.phaseIndex, 2);
     expect(next.phase!.round, 2);
     expect(next.displaySeconds, 18);
     expect(next.cues.map((cue) => cue.text), [null, 'round 2 of 2', 'work']);
   });
 
-  test('jumping past the end finishes once', () {
+  test('the stopwatch keeps elapsed time while nobody is sampling', () async {
     final clock = IntervalClock(plan());
-    clock.start(t0);
-    final done = clock.sample(t0.add(const Duration(seconds: 50)));
+    clock.start();
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    final sample = clock.sample();
+    expect(sample.status, RunStatus.running);
+    expect(sample.elapsed, greaterThan(Duration.zero));
+    clock.pause();
+    final frozen = clock.elapsed;
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    expect(clock.sample().elapsed, frozen);
+    expect(clock.status, RunStatus.paused);
+  });
+
+  test('jumping past the end finishes once', () {
+    final time = ManualTime();
+    final clock = IntervalClock(plan(), time: time);
+    clock.start();
+    time.advance(const Duration(seconds: 50));
+    final done = clock.sample();
     expect(done.status, RunStatus.finished);
     expect(done.elapsed, plan().total);
     expect(done.cues, hasLength(1));
     expect(done.cues.single.kind, CueKind.beep);
 
-    final again = clock.sample(t0.add(const Duration(seconds: 80)));
+    time.advance(const Duration(seconds: 30));
+    final again = clock.sample();
     expect(again.status, RunStatus.finished);
     expect(again.cues, isEmpty);
     expect(again.elapsed, const Duration(seconds: 50));
+  });
+
+  test('a phase of 3 seconds or less does not beep twice as it opens', () {
+    for (final seconds in [1, 2, 3]) {
+      final time = ManualTime();
+      final clock = IntervalClock(
+        IntervalPlan.fromPreset(
+          Preset(
+            id: 's$seconds',
+            name: 'S',
+            prep: 0,
+            work: seconds,
+            rest: 0,
+            rounds: 1,
+            sets: 1,
+            setRest: 0,
+            cooldown: 0,
+          ),
+        ),
+        time: time,
+      );
+      clock.start();
+      final opened = clock.sample();
+      expect(opened.displaySeconds, seconds, reason: '$seconds s');
+      expect(
+        opened.cues.where((cue) => cue.kind == CueKind.beep),
+        hasLength(1),
+        reason: '$seconds s opening',
+      );
+
+      if (seconds == 1) {
+        continue;
+      }
+      time.advance(const Duration(seconds: 1));
+      final next = clock.sample();
+      expect(next.displaySeconds, seconds - 1);
+      expect(next.cues.where((cue) => cue.kind == CueKind.beep), hasLength(1));
+    }
+  });
+
+  test('locate treats a phase boundary as the start of the next phase', () {
+    final built = plan();
+    expect(built.phases, hasLength(3));
+
+    final start = locate(built, Duration.zero);
+    expect(start.index, 0);
+    expect(start.into, Duration.zero);
+    expect(start.remaining, const Duration(seconds: 20));
+
+    final before = locate(
+      built,
+      const Duration(seconds: 20) - const Duration(microseconds: 1),
+    );
+    expect(before.index, 0);
+    expect(before.remaining, const Duration(microseconds: 1));
+
+    final boundary = locate(built, const Duration(seconds: 20));
+    expect(boundary.index, 1);
+    expect(boundary.phase.kind, PhaseKind.rest);
+    expect(boundary.into, Duration.zero);
+    expect(boundary.remaining, const Duration(seconds: 10));
+
+    final restEnd = locate(built, const Duration(seconds: 30));
+    expect(restEnd.index, 2);
+    expect(restEnd.into, Duration.zero);
+    expect(restEnd.remaining, const Duration(seconds: 20));
+
+    final done = locate(built, const Duration(seconds: 50));
+    expect(done.index, 2);
+    expect(done.into, const Duration(seconds: 20));
+    expect(done.remaining, Duration.zero);
+
+    final past = locate(built, const Duration(seconds: 80));
+    expect(past.index, 2);
+    expect(past.into, const Duration(seconds: 20));
+    expect(past.remaining, Duration.zero);
+
+    expect(
+      () => locate(const IntervalPlan([]), Duration.zero),
+      throwsStateError,
+    );
   });
 }

@@ -108,8 +108,8 @@ class Preset {
 
   factory Preset.fromJson(Map<String, dynamic> json) {
     return Preset(
-      id: json['id'] as String? ?? '',
-      name: json['name'] as String? ?? 'Tabata',
+      id: _string(json['id']),
+      name: _string(json['name'], fallback: 'Tabata'),
       prep: _int(json['prep']),
       work: _int(json['work'], fallback: 20),
       rest: _int(json['rest']),
@@ -126,4 +126,14 @@ int _int(Object? value, {int fallback = 0}) {
     return value.toInt();
   }
   return fallback;
+}
+
+String _string(Object? value, {String fallback = ''}) {
+  if (value == null) {
+    return fallback;
+  }
+  if (value is String) {
+    return value;
+  }
+  throw const FormatException('expected a string');
 }

@@ -88,10 +88,20 @@ class TabataStore {
       if (decoded is! List) {
         return [];
       }
-      return [
-        for (final item in decoded)
-          if (item is Map) decode(item.cast<String, dynamic>()),
-      ];
+      final out = <T>[];
+      for (final item in decoded) {
+        if (item is! Map) {
+          continue;
+        }
+        try {
+          out.add(decode(item.cast<String, dynamic>()));
+        } on FormatException {
+          // One corrupt record does not drop the rest of the list.
+        } on TypeError {
+          // A cast on a wrong JSON type throws TypeError, not FormatException.
+        }
+      }
+      return out;
     } on FormatException {
       return [];
     }

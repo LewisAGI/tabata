@@ -13,17 +13,20 @@ import '../widgets/run_view.dart';
 import 'scope.dart';
 
 class RunScreen extends StatefulWidget {
-  const RunScreen({super.key, required this.preset, this.now});
+  const RunScreen({super.key, required this.preset, this.time});
 
   final Preset preset;
-  final DateTime Function()? now;
+
+  /// Monotonic clock. Tests pass a [ManualTime]. The app uses a stopwatch,
+  /// which keeps elapsed time accurate while the screen is locked.
+  final MonotonicTime? time;
 
   @override
   State<RunScreen> createState() => _RunScreenState();
 }
 
 class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
-  late final DateTime Function() _now;
+  late final DateTime _startedAt;
   late final IntervalClock _clock;
   late final CueSink _cues;
   late final WakeLock _wake;
@@ -39,10 +42,13 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
     final scope = TabataScope.read(context);
     _cues = scope.cues;
     _wake = scope.wake;
-    _now = widget.now ?? DateTime.now;
-    _clock = IntervalClock(IntervalPlan.fromPreset(widget.preset));
-    _clock.start(_now());
-    _sample = _clock.sample(_now());
+    _startedAt = DateTime.now();
+    _clock = IntervalClock(
+      IntervalPlan.fromPreset(widget.preset),
+      time: widget.time,
+    );
+    _clock.start();
+    _sample = _clock.sample();
     _enqueue(_sample!.cues);
     unawaited(_cues.begin());
     unawaited(_wake.set(running: true, foreground: true));
@@ -61,7 +67,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final foreground = state == AppLifecycleState.resumed;
-    final running = _clock.pausedAt == null && !_done;
+    final running = _clock.status == RunStatus.running;
     unawaited(_wake.set(running: running, foreground: foreground));
     if (foreground && !_done) {
       _onTick();
@@ -80,7 +86,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
     if (_done || !mounted) {
       return;
     }
-    final next = _clock.sample(_now());
+    final next = _clock.sample();
     setState(() => _sample = next);
     if (next.status == RunStatus.finished) {
       unawaited(_finish(completed: true, cues: next.cues));
@@ -100,14 +106,13 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
     if (_done) {
       return;
     }
-    final now = _now();
-    if (_clock.pausedAt != null) {
-      _clock.resume(now);
+    if (_clock.status == RunStatus.paused) {
+      _clock.resume();
       unawaited(_cues.begin());
       unawaited(_wake.set(running: true, foreground: true));
       _startTicker();
     } else {
-      _clock.pause(now);
+      _clock.pause();
       _ticker?.cancel();
       unawaited(_cues.end());
       unawaited(_wake.set(running: false, foreground: true));
@@ -119,7 +124,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
     if (_done) {
       return;
     }
-    _clock.pause(_now());
+    _clock.pause();
     await _finish(completed: false, cues: const []);
   }
 
@@ -136,13 +141,11 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
     await _pending;
     await _cues.end();
     await _wake.set(running: false, foreground: false);
-    final end = _now();
-    final start = _clock.startedAt ?? end;
     final log = SessionLog.capture(
       preset: widget.preset,
-      startedAt: start,
-      endedAt: end,
-      elapsed: _clock.elapsed(end),
+      startedAt: _startedAt,
+      endedAt: DateTime.now(),
+      elapsed: _clock.elapsed,
       completed: completed,
     );
     if (!mounted) {

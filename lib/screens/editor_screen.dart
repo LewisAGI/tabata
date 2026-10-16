@@ -119,12 +119,8 @@ class _EditorScreenState extends State<EditorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final title = widget.preset.name.trim().isEmpty
-        ? 'Preset'
-        : widget.preset.name;
     return Scaffold(
       appBar: AppBar(
-        title: Text(title),
         actions: [
           IconTip(icon: Icons.check, message: 'Save', onPressed: () => _save()),
         ],
