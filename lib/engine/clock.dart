@@ -11,7 +11,7 @@ class Cue {
   final String? text;
 }
 
-enum RunStatus { ready, running, paused, finished }
+enum RunStatus { ready, running, paused, finished, interrupted }
 
 class PhaseLocation {
   const PhaseLocation({
@@ -119,8 +119,9 @@ class ManualTime implements MonotonicTime {
 /// which pauses while the device sleeps. If the silent audio loop stops, the
 /// app suspends and the stopwatch falls behind. [catchUp] compares wall time
 /// since the last [start] or [resume]. When wall time is more than a second
-/// ahead, that gap is added, and never more than the time left in the plan.
-/// A wall clock that moves backward does not rewind the timer.
+/// ahead, that gap is added. A gap longer than the time left ends the clock
+/// [RunStatus.interrupted] instead of landing on the end, which would look
+/// completed. A wall clock that moves backward does not rewind the timer.
 class IntervalClock {
   IntervalClock(this.plan, {MonotonicTime? time, DateTime Function()? now})
     : time = time ?? StopwatchTime(),
@@ -134,6 +135,7 @@ class IntervalClock {
   static const catchUpThreshold = Duration(seconds: 1);
 
   bool _started = false;
+  bool _interrupted = false;
   DateTime? _wallAnchor;
   Duration _monoAtAnchor = Duration.zero;
   Duration _slept = Duration.zero;
@@ -144,6 +146,9 @@ class IntervalClock {
   RunStatus get status {
     if (!_started) {
       return RunStatus.ready;
+    }
+    if (_interrupted) {
+      return RunStatus.interrupted;
     }
     if (plan.total == Duration.zero || elapsed >= plan.total) {
       return RunStatus.finished;
@@ -159,6 +164,7 @@ class IntervalClock {
       ..reset()
       ..start();
     _started = true;
+    _interrupted = false;
     _slept = Duration.zero;
     _announced = -1;
     _markedSecond = null;
@@ -186,7 +192,10 @@ class IntervalClock {
   ///
   /// Called on each tick, when the app returns to the foreground, and when
   /// an audio interruption ends. A backward wall-clock jump is ignored. A
-  /// forward gap is capped at the time still left in the plan.
+  /// forward gap longer than the time still left ends the clock as
+  /// [RunStatus.interrupted]. Clamping that gap onto the time left would
+  /// still reach [IntervalPlan.total], and [elapsed] already does that, so
+  /// the workout would be logged as completed.
   void catchUp() {
     if (status != RunStatus.running) {
       return;
@@ -202,8 +211,10 @@ class IntervalClock {
     final gap = _now().difference(anchor) - monoDelta;
     if (gap > catchUpThreshold) {
       final remaining = plan.total - elapsed;
-      if (remaining > Duration.zero) {
-        _slept += gap < remaining ? gap : remaining;
+      if (gap > remaining) {
+        _interrupted = true;
+      } else {
+        _slept += gap;
       }
     }
     _markAnchor();

@@ -299,7 +299,30 @@ void main() {
     expect(clock.status, RunStatus.running);
   });
 
-  test('forward catch-up stops at the time left in the plan', () {
+  test('a forward gap equal to the time left finishes the workout', () {
+    final time = ManualTime();
+    var now = DateTime(2026, 10, 16, 8);
+    final built = plan();
+    final clock = IntervalClock(built, time: time, now: () => now);
+    clock.start();
+    time.advance(const Duration(seconds: 40));
+    now = now.add(const Duration(seconds: 40));
+    clock.catchUp();
+    expect(clock.elapsed, const Duration(seconds: 40));
+
+    now = now.add(const Duration(seconds: 10));
+    clock.catchUp();
+    expect(clock.elapsed, built.total);
+    expect(clock.status, RunStatus.finished);
+    final done = clock.sample();
+    expect(done.elapsed, built.total);
+    expect(done.remaining, Duration.zero);
+    expect(done.cues.single.kind, CueKind.beep);
+  });
+
+  test('a forward gap bigger than the time left ends interrupted', () {
+    // 10s left. Adding the 60s gap, or clamping it to those 10s, both land
+    // on plan.total because elapsed already clamps. That would look completed.
     final time = ManualTime();
     var now = DateTime(2026, 10, 16, 8);
     final built = plan();
@@ -312,11 +335,35 @@ void main() {
 
     now = now.add(const Duration(seconds: 60));
     clock.catchUp();
-    expect(clock.elapsed, built.total);
-    expect(clock.status, RunStatus.finished);
-    final done = clock.sample();
-    expect(done.elapsed, built.total);
-    expect(done.remaining, Duration.zero);
-    expect(done.phaseIndex, built.phases.length - 1);
+    expect(clock.status, RunStatus.interrupted);
+    expect(clock.elapsed, const Duration(seconds: 40));
+    final held = clock.sample();
+    expect(held.status, RunStatus.interrupted);
+    expect(held.elapsed, const Duration(seconds: 40));
+    expect(held.cues, isEmpty);
+
+    clock.catchUp();
+    expect(clock.status, RunStatus.interrupted);
+    expect(clock.elapsed, const Duration(seconds: 40));
+  });
+
+  test('a 100s gap at 200s of a 240s plan ends interrupted', () {
+    // 40s left. A gap of 100s is past the time left, and under the full plan.
+    final time = ManualTime();
+    var now = DateTime(2026, 10, 22, 8);
+    final built = IntervalPlan.fromPreset(Preset.classic);
+    expect(built.total, const Duration(seconds: 240));
+    final clock = IntervalClock(built, time: time, now: () => now);
+    clock.start();
+    time.advance(const Duration(seconds: 200));
+    now = now.add(const Duration(seconds: 200));
+    clock.catchUp();
+    expect(clock.elapsed, const Duration(seconds: 200));
+    expect(clock.status, RunStatus.running);
+
+    now = now.add(const Duration(seconds: 100));
+    clock.catchUp();
+    expect(clock.status, RunStatus.interrupted);
+    expect(clock.elapsed, const Duration(seconds: 200));
   });
 }

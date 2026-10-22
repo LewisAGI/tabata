@@ -16,6 +16,7 @@ class SessionLog {
     required this.endedAt,
     required this.totalSeconds,
     required this.completed,
+    this.interrupted = false,
   });
 
   final String id;
@@ -33,7 +34,18 @@ class SessionLog {
   final int totalSeconds;
   final bool completed;
 
-  String get statusLabel => completed ? 'Completed' : 'Stopped early';
+  /// A wall-clock gap ran past the time left. This is not a manual stop.
+  final bool interrupted;
+
+  String get statusLabel {
+    if (interrupted) {
+      return 'Interrupted';
+    }
+    if (completed) {
+      return 'Completed';
+    }
+    return 'Stopped early';
+  }
 
   factory SessionLog.capture({
     required Preset preset,
@@ -41,6 +53,7 @@ class SessionLog {
     required DateTime endedAt,
     required Duration elapsed,
     required bool completed,
+    bool interrupted = false,
   }) {
     return SessionLog(
       id: '${startedAt.microsecondsSinceEpoch}',
@@ -56,7 +69,8 @@ class SessionLog {
       startedAt: startedAt,
       endedAt: endedAt,
       totalSeconds: elapsed.inSeconds,
-      completed: completed,
+      completed: completed && !interrupted,
+      interrupted: interrupted,
     );
   }
 
@@ -75,10 +89,12 @@ class SessionLog {
     'endedAt': endedAt.toIso8601String(),
     'totalSeconds': totalSeconds,
     'completed': completed,
+    'interrupted': interrupted,
   };
 
   factory SessionLog.fromJson(Map<String, dynamic> json) {
     int asInt(Object? value) => value is num ? value.toInt() : 0;
+    final interrupted = json['interrupted'] == true;
     return SessionLog(
       id: _string(json['id']),
       presetId: _string(json['presetId']),
@@ -93,7 +109,8 @@ class SessionLog {
       startedAt: _time(json['startedAt']),
       endedAt: _time(json['endedAt']),
       totalSeconds: asInt(json['totalSeconds']),
-      completed: json['completed'] == true,
+      completed: !interrupted && json['completed'] == true,
+      interrupted: interrupted,
     );
   }
 }

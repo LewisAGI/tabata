@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabata/app.dart';
 import 'package:tabata/data/store.dart';
-import 'package:tabata/models/preset.dart';
 import 'package:tabata/engine/clock.dart';
+import 'package:tabata/models/preset.dart';
+import 'package:tabata/models/session_log.dart';
 import 'package:tabata/screens/editor_screen.dart';
+import 'package:tabata/screens/log_screen.dart';
 import 'package:tabata/screens/run_screen.dart';
 import 'package:tabata/services/cues.dart';
 import 'package:tabata/services/wake.dart';
@@ -124,5 +126,145 @@ void main() {
     expect(find.text('WEEK'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('a frozen stopwatch catches up 60s on the tick', (tester) async {
+    final store = await seeded();
+    final time = ManualTime();
+    var now = DateTime(2026, 10, 22, 8);
+    await tester.pumpWidget(
+      app(
+        store,
+        home: RunScreen(preset: Preset.classic, time: time, now: () => now),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('PREP'), findsOneWidget);
+    expect(find.text('00:00.0'), findsOneWidget);
+
+    now = now.add(const Duration(seconds: 60));
+    await tester.pump();
+    expect(time.elapsed, Duration.zero);
+    expect(find.text('00:00.0'), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(time.elapsed, Duration.zero);
+    expect(find.text('01:00.0'), findsOneWidget);
+    expect(find.text('ROUND 2/8 · REST'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('run-seconds'))).data,
+      '10',
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('an ended interruption runs the tick hook', (tester) async {
+    final store = await seeded();
+    final cues = SilentCues();
+    final time = ManualTime();
+    var now = DateTime(2026, 10, 22, 8);
+    await tester.pumpWidget(
+      app(
+        store,
+        cues: cues,
+        home: RunScreen(preset: Preset.classic, time: time, now: () => now),
+      ),
+    );
+    await tester.pump();
+    expect(cues.onInterruptionEnd, isNotNull);
+    expect(find.text('00:00.0'), findsOneWidget);
+
+    now = now.add(const Duration(seconds: 60));
+    await tester.pump();
+    expect(time.elapsed, Duration.zero);
+    expect(find.text('00:00.0'), findsOneWidget);
+
+    cues.onInterruptionEnd!.call();
+    await tester.pump();
+    expect(time.elapsed, Duration.zero);
+    expect(find.text('01:00.0'), findsOneWidget);
+    expect(find.text('ROUND 2/8 · REST'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('a clock jump past the time left is logged interrupted', (
+    tester,
+  ) async {
+    final store = await seeded();
+    final time = ManualTime();
+    var now = DateTime(2026, 10, 22, 8);
+    const preset = Preset(
+      id: 'short',
+      name: 'Short',
+      prep: 0,
+      work: 20,
+      rest: 10,
+      rounds: 2,
+      sets: 1,
+      setRest: 0,
+      cooldown: 0,
+    );
+    await tester.pumpWidget(
+      app(
+        store,
+        home: RunScreen(preset: preset, time: time, now: () => now),
+      ),
+    );
+    await tester.pump();
+
+    time.advance(const Duration(seconds: 40));
+    now = now.add(const Duration(seconds: 40));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('00:40.0'), findsOneWidget);
+
+    now = now.add(const Duration(seconds: 60));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Interrupted'), findsOneWidget);
+    expect(find.text('Stopped early'), findsNothing);
+    expect(find.text('Completed'), findsNothing);
+    expect(store.sessions(), hasLength(1));
+    final saved = store.sessions().single;
+    expect(saved.interrupted, isTrue);
+    expect(saved.completed, isFalse);
+    expect(saved.statusLabel, 'Interrupted');
+    expect(saved.totalSeconds, 40);
+    expect(saved.presetName, 'Short');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('the log shows interrupted apart from a manual stop', (
+    tester,
+  ) async {
+    final store = TabataStore(MemoryBox());
+    final started = DateTime(2026, 10, 22, 8, 15);
+    await store.addSession(
+      SessionLog.capture(
+        preset: Preset.classic.copyWith(name: 'Nap'),
+        startedAt: started,
+        endedAt: started.add(const Duration(minutes: 3)),
+        elapsed: const Duration(seconds: 200),
+        completed: false,
+        interrupted: true,
+      ),
+    );
+    await tester.pumpWidget(app(store, home: const LogScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nap'), findsOneWidget);
+    expect(find.text('Interrupted'), findsOneWidget);
+    expect(find.text('Stopped early'), findsNothing);
+    expect(find.text('Completed'), findsNothing);
+
+    await tester.tap(find.text('Nap'));
+    await tester.pumpAndSettle();
+    expect(find.text('Status'), findsOneWidget);
+    expect(find.text('Interrupted'), findsNWidgets(2));
+    expect(find.text('Stopped early'), findsNothing);
+    expect(find.text('Completed'), findsNothing);
   });
 }

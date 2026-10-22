@@ -13,13 +13,16 @@ import '../widgets/run_view.dart';
 import 'scope.dart';
 
 class RunScreen extends StatefulWidget {
-  const RunScreen({super.key, required this.preset, this.time});
+  const RunScreen({super.key, required this.preset, this.time, this.now});
 
   final Preset preset;
 
   /// Monotonic clock. Tests pass a [ManualTime]. The app uses a stopwatch,
   /// which keeps elapsed time accurate while the screen is locked.
   final MonotonicTime? time;
+
+  /// Wall clock for sleep catch-up. Tests move this while [time] stays put.
+  final DateTime Function()? now;
 
   @override
   State<RunScreen> createState() => _RunScreenState();
@@ -46,6 +49,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
     _clock = IntervalClock(
       IntervalPlan.fromPreset(widget.preset),
       time: widget.time,
+      now: widget.now,
     );
     _cues.onInterruptionEnd = () {
       if (_done || !mounted) {
@@ -100,6 +104,10 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
       return;
     }
     _clock.catchUp();
+    if (_clock.status == RunStatus.interrupted) {
+      unawaited(_finish(completed: false, interrupted: true, cues: const []));
+      return;
+    }
     final next = _clock.sample();
     setState(() => _sample = next);
     if (next.status == RunStatus.finished) {
@@ -144,6 +152,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
 
   Future<void> _finish({
     required bool completed,
+    bool interrupted = false,
     required List<Cue> cues,
   }) async {
     if (_done) {
@@ -161,6 +170,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
       endedAt: DateTime.now(),
       elapsed: _clock.elapsed,
       completed: completed,
+      interrupted: interrupted,
     );
     if (!mounted) {
       return;

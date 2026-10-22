@@ -6,6 +6,24 @@ import 'package:just_audio/just_audio.dart';
 
 import 'cues.dart';
 
+/// Resumes the silent loop when an interruption ends, then notifies the timer.
+///
+/// [begin] is true while the interruption is starting. [bedOn] is true while
+/// the loop should be playing. [onInterruptionEnd] lets the countdown catch
+/// up the time the stopwatch missed.
+void handleAudioInterruption({
+  required bool begin,
+  required bool bedOn,
+  required void Function() resumeBed,
+  void Function()? onInterruptionEnd,
+}) {
+  if (begin || !bedOn) {
+    return;
+  }
+  resumeBed();
+  onInterruptionEnd?.call();
+}
+
 /// Beeps, spoken cues, and a silent loop that keeps iOS from suspending the
 /// timer. The loop is digital silence so it does not hiss over other audio.
 /// The session is playback mixed with whatever else is playing.
@@ -63,11 +81,12 @@ class DeviceCues implements CueSink {
   /// A phone call, Siri, or an alarm stops the silent loop. When that
   /// interruption ends, start it again so iOS does not suspend the timer.
   void _onInterruption(AudioInterruptionEvent event) {
-    if (event.begin || !_bedOn) {
-      return;
-    }
-    unawaited(_resumeBed());
-    onInterruptionEnd?.call();
+    handleAudioInterruption(
+      begin: event.begin,
+      bedOn: _bedOn,
+      resumeBed: () => unawaited(_resumeBed()),
+      onInterruptionEnd: onInterruptionEnd,
+    );
   }
 
   Future<void> _resumeBed() async {
