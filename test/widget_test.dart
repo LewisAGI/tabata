@@ -125,4 +125,109 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets('a frozen stopwatch catches up 60s on the tick', (tester) async {
+    final store = await seeded();
+    final time = ManualTime();
+    var now = DateTime(2026, 10, 22, 8);
+    await tester.pumpWidget(
+      app(
+        store,
+        home: RunScreen(preset: Preset.classic, time: time, now: () => now),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('PREP'), findsOneWidget);
+    expect(find.text('00:00.0'), findsOneWidget);
+
+    now = now.add(const Duration(seconds: 60));
+    await tester.pump();
+    expect(time.elapsed, Duration.zero);
+    expect(find.text('00:00.0'), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(time.elapsed, Duration.zero);
+    expect(find.text('01:00.0'), findsOneWidget);
+    expect(find.text('ROUND 2/8 · REST'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('run-seconds'))).data,
+      '10',
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('an ended interruption runs the tick hook', (tester) async {
+    final store = await seeded();
+    final cues = SilentCues();
+    final time = ManualTime();
+    var now = DateTime(2026, 10, 22, 8);
+    await tester.pumpWidget(
+      app(
+        store,
+        cues: cues,
+        home: RunScreen(preset: Preset.classic, time: time, now: () => now),
+      ),
+    );
+    await tester.pump();
+    expect(cues.onInterruptionEnd, isNotNull);
+    expect(find.text('00:00.0'), findsOneWidget);
+
+    now = now.add(const Duration(seconds: 60));
+    await tester.pump();
+    expect(time.elapsed, Duration.zero);
+    expect(find.text('00:00.0'), findsOneWidget);
+
+    cues.onInterruptionEnd!.call();
+    await tester.pump();
+    expect(time.elapsed, Duration.zero);
+    expect(find.text('01:00.0'), findsOneWidget);
+    expect(find.text('ROUND 2/8 · REST'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('a clock jump past the time left is logged interrupted', (
+    tester,
+  ) async {
+    final store = await seeded();
+    final time = ManualTime();
+    var now = DateTime(2026, 10, 22, 8);
+    const preset = Preset(
+      id: 'short',
+      name: 'Short',
+      prep: 0,
+      work: 20,
+      rest: 10,
+      rounds: 2,
+      sets: 1,
+      setRest: 0,
+      cooldown: 0,
+    );
+    await tester.pumpWidget(
+      app(
+        store,
+        home: RunScreen(preset: preset, time: time, now: () => now),
+      ),
+    );
+    await tester.pump();
+
+    time.advance(const Duration(seconds: 40));
+    now = now.add(const Duration(seconds: 40));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('00:40.0'), findsOneWidget);
+
+    now = now.add(const Duration(seconds: 60));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Stopped early'), findsOneWidget);
+    expect(find.text('Completed'), findsNothing);
+    expect(store.sessions(), hasLength(1));
+    expect(store.sessions().single.completed, isFalse);
+    expect(store.sessions().single.totalSeconds, 40);
+    expect(store.sessions().single.presetName, 'Short');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }
