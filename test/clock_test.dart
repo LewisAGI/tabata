@@ -346,4 +346,24 @@ void main() {
     expect(clock.status, RunStatus.interrupted);
     expect(clock.elapsed, const Duration(seconds: 40));
   });
+
+  test('a 100s gap at 200s of a 240s plan ends interrupted', () {
+    // 40s left. A gap of 100s is past the time left, and under the full plan.
+    final time = ManualTime();
+    var now = DateTime(2026, 10, 22, 8);
+    final built = IntervalPlan.fromPreset(Preset.classic);
+    expect(built.total, const Duration(seconds: 240));
+    final clock = IntervalClock(built, time: time, now: () => now);
+    clock.start();
+    time.advance(const Duration(seconds: 200));
+    now = now.add(const Duration(seconds: 200));
+    clock.catchUp();
+    expect(clock.elapsed, const Duration(seconds: 200));
+    expect(clock.status, RunStatus.running);
+
+    now = now.add(const Duration(seconds: 100));
+    clock.catchUp();
+    expect(clock.status, RunStatus.interrupted);
+    expect(clock.elapsed, const Duration(seconds: 200));
+  });
 }
