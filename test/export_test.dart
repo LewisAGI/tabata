@@ -13,6 +13,7 @@ void main() {
     required String name,
     required int totalSeconds,
     required bool completed,
+    bool interrupted = false,
     int prep = 10,
     int setRest = 0,
     int cooldown = 0,
@@ -28,6 +29,7 @@ void main() {
       endedAt: start.add(Duration(seconds: totalSeconds)),
       elapsed: Duration(seconds: totalSeconds),
       completed: completed,
+      interrupted: interrupted,
     );
   }
 
@@ -146,6 +148,26 @@ Cooldown: 30s
 Total time: 1:05
 Stopped early
 ''');
+  });
+
+  test('an interrupted session exports its own status', () {
+    final session = log(
+      start: morning,
+      name: 'Classic',
+      totalSeconds: 200,
+      completed: false,
+      interrupted: true,
+    );
+    expect(session.statusLabel, 'Interrupted');
+    for (final text in [
+      exportSession(session),
+      exportDay(morning, [session]),
+      exportWeek(morning, [session]),
+    ]) {
+      expect(text, contains('Interrupted'));
+      expect(text, isNot(contains('Stopped early')));
+      expect(text, isNot(contains('Completed')));
+    }
   });
 
   test('a week that crosses months uses both month names', () {

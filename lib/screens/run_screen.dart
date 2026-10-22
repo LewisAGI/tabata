@@ -105,7 +105,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
     }
     _clock.catchUp();
     if (_clock.status == RunStatus.interrupted) {
-      unawaited(_finish(completed: false, cues: const []));
+      unawaited(_finish(completed: false, interrupted: true, cues: const []));
       return;
     }
     final next = _clock.sample();
@@ -152,6 +152,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
 
   Future<void> _finish({
     required bool completed,
+    bool interrupted = false,
     required List<Cue> cues,
   }) async {
     if (_done) {
@@ -169,6 +170,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
       endedAt: DateTime.now(),
       elapsed: _clock.elapsed,
       completed: completed,
+      interrupted: interrupted,
     );
     if (!mounted) {
       return;

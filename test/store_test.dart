@@ -90,6 +90,41 @@ void main() {
     expect(again.last.presetName, 'Short');
   });
 
+  test('an interrupted session reloads as interrupted', () async {
+    final box = MemoryBox();
+    final store = TabataStore(box);
+    final started = DateTime(2026, 10, 22, 8, 15);
+    await store.addSession(
+      SessionLog.capture(
+        preset: Preset.classic,
+        startedAt: started,
+        endedAt: started.add(const Duration(minutes: 3)),
+        elapsed: const Duration(seconds: 200),
+        completed: false,
+        interrupted: true,
+      ),
+    );
+    final again = TabataStore(box).sessions().single;
+    expect(again.interrupted, isTrue);
+    expect(again.completed, isFalse);
+    expect(again.totalSeconds, 200);
+    expect(again.statusLabel, 'Interrupted');
+    expect(again.statusLabel, isNot('Stopped early'));
+    expect(again.statusLabel, isNot('Completed'));
+
+    final legacy = Map<String, dynamic>.from(again.toJson())
+      ..remove('interrupted');
+    expect(SessionLog.fromJson(legacy).statusLabel, 'Stopped early');
+    expect(
+      SessionLog.fromJson({
+        ...again.toJson(),
+        'interrupted': false,
+        'completed': true,
+      }).statusLabel,
+      'Completed',
+    );
+  });
+
   test('broken json reads as an empty list', () {
     final box = MemoryBox()..data[TabataStore.presetsKey] = '{';
     expect(TabataStore(box).presets(), isEmpty);

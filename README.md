@@ -41,7 +41,7 @@ The running screen is a large countdown. The background tints for work and rest.
 
 The countdown reads a monotonic stopwatch while the app is open, so setting the clock back does not rewind it. On iOS that clock pauses while the phone sleeps. Each tick, when the app returns, and when an audio interruption ends, a wall-clock lead of more than a second is added. A lead longer than the time left ends the workout interrupted instead of completed. iOS `UIBackgroundModes` includes `audio`, and the audio session is playback mixed with whatever else is playing. A silent loop keeps the process awake so the beeps and the voice still fire with the screen locked. If a call, Siri, or an alarm interrupts that loop, it starts again when the interruption ends. `wakelock_plus` holds the screen on only while the timer is running in the foreground.
 
-Finished and stopped sessions are logged on the phone. Copy, Grok, and Share hand over one plain-text block for a session, a day, or a week: heading, date, preset, work, rest, rounds, sets, total time, and completed or stopped early. Paste that block into any AI. Share uses the system sheet, and on iPad the popover is anchored to the button.
+Finished and stopped sessions are logged on the phone. Copy, Grok, and Share hand over one plain-text block for a session, a day, or a week: heading, date, preset, work, rest, rounds, sets, total time, and completed, stopped early, or interrupted. Paste that block into any AI. Share uses the system sheet, and on iPad the popover is anchored to the button.
 
 ## Tests
 

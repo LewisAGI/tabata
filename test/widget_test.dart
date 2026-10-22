@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabata/app.dart';
 import 'package:tabata/data/store.dart';
-import 'package:tabata/models/preset.dart';
 import 'package:tabata/engine/clock.dart';
+import 'package:tabata/models/preset.dart';
+import 'package:tabata/models/session_log.dart';
 import 'package:tabata/screens/editor_screen.dart';
+import 'package:tabata/screens/log_screen.dart';
 import 'package:tabata/screens/run_screen.dart';
 import 'package:tabata/services/cues.dart';
 import 'package:tabata/services/wake.dart';
@@ -221,13 +223,48 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     await tester.pumpAndSettle();
 
-    expect(find.text('Stopped early'), findsOneWidget);
+    expect(find.text('Interrupted'), findsOneWidget);
+    expect(find.text('Stopped early'), findsNothing);
     expect(find.text('Completed'), findsNothing);
     expect(store.sessions(), hasLength(1));
-    expect(store.sessions().single.completed, isFalse);
-    expect(store.sessions().single.totalSeconds, 40);
-    expect(store.sessions().single.presetName, 'Short');
+    final saved = store.sessions().single;
+    expect(saved.interrupted, isTrue);
+    expect(saved.completed, isFalse);
+    expect(saved.statusLabel, 'Interrupted');
+    expect(saved.totalSeconds, 40);
+    expect(saved.presetName, 'Short');
 
     await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('the log shows interrupted apart from a manual stop', (
+    tester,
+  ) async {
+    final store = TabataStore(MemoryBox());
+    final started = DateTime(2026, 10, 22, 8, 15);
+    await store.addSession(
+      SessionLog.capture(
+        preset: Preset.classic.copyWith(name: 'Nap'),
+        startedAt: started,
+        endedAt: started.add(const Duration(minutes: 3)),
+        elapsed: const Duration(seconds: 200),
+        completed: false,
+        interrupted: true,
+      ),
+    );
+    await tester.pumpWidget(app(store, home: const LogScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nap'), findsOneWidget);
+    expect(find.text('Interrupted'), findsOneWidget);
+    expect(find.text('Stopped early'), findsNothing);
+    expect(find.text('Completed'), findsNothing);
+
+    await tester.tap(find.text('Nap'));
+    await tester.pumpAndSettle();
+    expect(find.text('Status'), findsOneWidget);
+    expect(find.text('Interrupted'), findsNWidgets(2));
+    expect(find.text('Stopped early'), findsNothing);
+    expect(find.text('Completed'), findsNothing);
   });
 }
