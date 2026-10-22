@@ -125,6 +125,74 @@ void main() {
     );
   });
 
+  test('an old saved session without the interrupted key loads correctly', () {
+    final started = DateTime(2026, 10, 16, 8, 41);
+    final ended = started.add(const Duration(minutes: 4));
+    final box = MemoryBox()
+      ..data[TabataStore.sessionsKey] = jsonEncode([
+        {
+          'id': '${started.microsecondsSinceEpoch}',
+          'presetId': 'classic',
+          'presetName': 'Classic',
+          'prep': 10,
+          'work': 20,
+          'rest': 10,
+          'rounds': 8,
+          'sets': 1,
+          'setRest': 0,
+          'cooldown': 0,
+          'startedAt': started.toIso8601String(),
+          'endedAt': ended.toIso8601String(),
+          'totalSeconds': 240,
+          'completed': true,
+        },
+      ]);
+    final session = TabataStore(box).sessions().single;
+    expect(session.id, '${started.microsecondsSinceEpoch}');
+    expect(session.presetId, 'classic');
+    expect(session.presetName, 'Classic');
+    expect(session.prep, 10);
+    expect(session.work, 20);
+    expect(session.rest, 10);
+    expect(session.rounds, 8);
+    expect(session.sets, 1);
+    expect(session.setRest, 0);
+    expect(session.cooldown, 0);
+    expect(session.startedAt, started);
+    expect(session.endedAt, ended);
+    expect(session.totalSeconds, 240);
+    expect(session.completed, isTrue);
+    expect(session.interrupted, isFalse);
+    expect(session.statusLabel, 'Completed');
+  });
+
+  test('json marked interrupted and completed loads as not completed', () {
+    final started = DateTime(2026, 10, 22, 8, 15);
+    final captured = SessionLog.capture(
+      preset: Preset.classic,
+      startedAt: started,
+      endedAt: started.add(const Duration(minutes: 3)),
+      elapsed: const Duration(seconds: 200),
+      completed: true,
+      interrupted: true,
+    );
+    expect(captured.completed, isFalse);
+    expect(captured.interrupted, isTrue);
+
+    final saved = captured.toJson();
+    saved['completed'] = true;
+    saved['interrupted'] = true;
+    final loaded = TabataStore(
+      MemoryBox()..data[TabataStore.sessionsKey] = jsonEncode([saved]),
+    ).sessions().single;
+    expect(loaded.completed, isFalse);
+    expect(loaded.interrupted, isTrue);
+    expect(loaded.statusLabel, 'Interrupted');
+    expect(loaded.statusLabel, isNot('Completed'));
+    expect(loaded.statusLabel, isNot('Stopped early'));
+    expect(loaded.totalSeconds, 200);
+  });
+
   test('broken json reads as an empty list', () {
     final box = MemoryBox()..data[TabataStore.presetsKey] = '{';
     expect(TabataStore(box).presets(), isEmpty);
