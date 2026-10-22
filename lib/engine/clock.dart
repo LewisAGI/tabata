@@ -54,8 +54,8 @@ class ClockSample {
 /// Monotonic elapsed time for foreground ticks.
 ///
 /// [StopwatchTime] does not move when the wall clock is changed. On iOS it
-/// also pauses while the device sleeps; [IntervalClock.onAppResumed] fills
-/// that gap from wall time.
+/// also pauses while the device sleeps; [IntervalClock.catchUp] fills that
+/// gap from wall time.
 abstract class MonotonicTime {
   void start();
   void stop();
@@ -117,9 +117,10 @@ class ManualTime implements MonotonicTime {
 /// Foreground ticks come from the stopwatch, so changing the phone's clock
 /// does not move the phase. On iOS that stopwatch is `CLOCK_MONOTONIC_RAW`,
 /// which pauses while the device sleeps. If the silent audio loop stops, the
-/// app suspends and the stopwatch falls behind. [onAppResumed] compares wall
-/// time since the last [start] or [resume] and, when wall time is more than
-/// a second ahead, adds that gap.
+/// app suspends and the stopwatch falls behind. [catchUp] compares wall time
+/// since the last [start] or [resume]. When wall time is more than a second
+/// ahead, that gap is added, and never more than the time left in the plan.
+/// A wall clock that moves backward does not rewind the timer.
 class IntervalClock {
   IntervalClock(this.plan, {MonotonicTime? time, DateTime Function()? now})
     : time = time ?? StopwatchTime(),
@@ -181,10 +182,12 @@ class IntervalClock {
     _markAnchor();
   }
 
-  /// Call when the app returns to the foreground.
+  /// Compare wall time with the stopwatch and add any missed time.
   ///
-  /// Adds the time the stopwatch missed while the device was asleep.
-  void onAppResumed() {
+  /// Called on each tick, when the app returns to the foreground, and when
+  /// an audio interruption ends. A backward wall-clock jump is ignored. A
+  /// forward gap is capped at the time still left in the plan.
+  void catchUp() {
     if (status != RunStatus.running) {
       return;
     }
@@ -198,7 +201,10 @@ class IntervalClock {
     }
     final gap = _now().difference(anchor) - monoDelta;
     if (gap > catchUpThreshold) {
-      _slept += gap;
+      final remaining = plan.total - elapsed;
+      if (remaining > Duration.zero) {
+        _slept += gap < remaining ? gap : remaining;
+      }
     }
     _markAnchor();
   }

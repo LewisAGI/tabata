@@ -10,6 +10,9 @@ import 'cues.dart';
 /// timer. The loop is digital silence so it does not hiss over other audio.
 /// The session is playback mixed with whatever else is playing.
 class DeviceCues implements CueSink {
+  @override
+  void Function()? onInterruptionEnd;
+
   final AudioPlayer _beep = AudioPlayer();
   final AudioPlayer _bed = AudioPlayer();
   final FlutterTts _tts = FlutterTts();
@@ -64,6 +67,7 @@ class DeviceCues implements CueSink {
       return;
     }
     unawaited(_resumeBed());
+    onInterruptionEnd?.call();
   }
 
   Future<void> _resumeBed() async {

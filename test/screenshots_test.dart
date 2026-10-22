@@ -91,16 +91,19 @@ void main() {
     phone(tester);
     await tester.pumpWidget(
       frame(
-        home: RunView(
-          label: 'ROUND 3/8 · WORK',
-          seconds: 3,
-          progress: 0.85,
-          elapsed: Duration(milliseconds: 6600),
-          paused: false,
-          tint: AppColors.workTint,
-          ring: AppColors.accent,
-          onPause: _noop,
-          onStop: _noop,
+        home: Scaffold(
+          backgroundColor: AppColors.workTint,
+          body: RunView(
+            label: 'ROUND 3/8 · WORK',
+            seconds: 3,
+            progress: 0.85,
+            elapsed: Duration(milliseconds: 6600),
+            paused: false,
+            tint: AppColors.workTint,
+            ring: AppColors.accent,
+            onPause: _noop,
+            onStop: _noop,
+          ),
         ),
       ),
     );
@@ -114,16 +117,19 @@ void main() {
 
     await tester.pumpWidget(
       frame(
-        home: RunView(
-          label: 'ROUND 3/8 · REST',
-          seconds: 8,
-          progress: 0.2,
-          elapsed: Duration(seconds: 46),
-          paused: false,
-          tint: AppColors.restTint,
-          ring: Color(0xFF64748B),
-          onPause: _noop,
-          onStop: _noop,
+        home: Scaffold(
+          backgroundColor: AppColors.restTint,
+          body: RunView(
+            label: 'ROUND 3/8 · REST',
+            seconds: 8,
+            progress: 0.2,
+            elapsed: Duration(seconds: 46),
+            paused: false,
+            tint: AppColors.restTint,
+            ring: Color(0xFF64748B),
+            onPause: _noop,
+            onStop: _noop,
+          ),
         ),
       ),
     );

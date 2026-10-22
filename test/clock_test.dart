@@ -225,7 +225,7 @@ void main() {
     now = now.add(const Duration(seconds: 60));
     expect(clock.elapsed, Duration.zero);
 
-    clock.onAppResumed();
+    clock.catchUp();
     final landed = clock.sample();
     expect(landed.elapsed, const Duration(seconds: 60));
     expect(landed.phaseIndex, 2);
@@ -233,7 +233,7 @@ void main() {
     expect(landed.phase!.round, 2);
     expect(landed.remaining, const Duration(seconds: 5));
 
-    clock.onAppResumed();
+    clock.catchUp();
     expect(clock.elapsed, const Duration(seconds: 60));
   });
 
@@ -259,7 +259,7 @@ void main() {
     clock.start();
 
     now = now.add(IntervalClock.catchUpThreshold);
-    clock.onAppResumed();
+    clock.catchUp();
     expect(clock.elapsed, Duration.zero);
     expect(clock.sample().phaseIndex, 0);
 
@@ -267,16 +267,56 @@ void main() {
     now = now.add(const Duration(seconds: 10));
     clock.pause();
     now = now.add(const Duration(seconds: 60));
-    clock.onAppResumed();
+    clock.catchUp();
     expect(clock.status, RunStatus.paused);
     expect(clock.elapsed, const Duration(seconds: 10));
 
     clock.resume();
     now = now.add(const Duration(seconds: 60));
-    clock.onAppResumed();
+    clock.catchUp();
     expect(clock.elapsed, const Duration(seconds: 70));
     final landed = clock.sample();
     expect(landed.phase!.kind, PhaseKind.rest);
     expect(landed.phase!.round, 2);
+  });
+
+  test('setting the wall clock back 60s does not change elapsed time', () {
+    final time = ManualTime();
+    var now = DateTime(2026, 10, 16, 8);
+    final clock = IntervalClock(plan(), time: time, now: () => now);
+    clock.start();
+    time.advance(const Duration(seconds: 18));
+    now = now.add(const Duration(seconds: 18));
+    clock.catchUp();
+    expect(clock.elapsed, const Duration(seconds: 18));
+    expect(clock.sample().displaySeconds, 2);
+
+    now = now.subtract(const Duration(seconds: 60));
+    clock.catchUp();
+    expect(clock.elapsed, const Duration(seconds: 18));
+    expect(clock.sample().displaySeconds, 2);
+    expect(clock.sample().phaseIndex, 0);
+    expect(clock.status, RunStatus.running);
+  });
+
+  test('forward catch-up stops at the time left in the plan', () {
+    final time = ManualTime();
+    var now = DateTime(2026, 10, 16, 8);
+    final built = plan();
+    final clock = IntervalClock(built, time: time, now: () => now);
+    clock.start();
+    time.advance(const Duration(seconds: 40));
+    now = now.add(const Duration(seconds: 40));
+    clock.catchUp();
+    expect(clock.elapsed, const Duration(seconds: 40));
+
+    now = now.add(const Duration(seconds: 60));
+    clock.catchUp();
+    expect(clock.elapsed, built.total);
+    expect(clock.status, RunStatus.finished);
+    final done = clock.sample();
+    expect(done.elapsed, built.total);
+    expect(done.remaining, Duration.zero);
+    expect(done.phaseIndex, built.phases.length - 1);
   });
 }
